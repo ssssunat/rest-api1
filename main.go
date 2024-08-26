@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -35,27 +34,53 @@ var m requestBody
 
 func GetMessage(w http.ResponseWriter, r *http.Request) {
 	var messages []Message
-	result := DB.Find(&messages)
-	if result.Error != nil {
-		log.Printf("Error while fetch messages %s", result.Error)
-	}
+	DB.Find(&messages)
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(messages)
 }
 
 func CreateMessage(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		fmt.Fprintf(w, "error json Body")
+		http.Error(w, "Invalid input", http.StatusNotFound)
 		return
 	}
 
 	message := Message{Text: m.Message}
-	result := DB.Create(&message)
-	if result.Error != nil {
-		log.Println(result.Error)
-		fmt.Fprintf(w, "error to add in DB")
+	DB.Create(&message)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(m)
+}
+
+func UpdateMessage(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var message Message
+	if err := DB.First(&message, id).Error; err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
 		return
 	}
-	json.NewEncoder(w).Encode(m)
+
+	var input Message
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	DB.Model(&message).Updates(input)
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(message)
+}
+
+func DeleteMessage(w http.ResponseWriter, r *http.Request) {
+	log.Println("DeleteMessage handler called")
+	id := chi.URLParam(r, "id")
+	if err := DB.Delete(&Message{}, id).Error; err != nil {
+		log.Println("Error deleting message:", err)
+		http.Error(w, "Message ot found", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func main() {
@@ -65,6 +90,8 @@ func main() {
 	router := chi.NewRouter()
 
 	router.Get("/api/messages", GetMessage)
+	router.Patch("/api/messages/{id}", UpdateMessage)
+	router.Delete("/api/messages/{id}", DeleteMessage)
 	router.Post("/api/messages", CreateMessage)
 
 	http.ListenAndServe(":8080", router)
