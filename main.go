@@ -52,6 +52,8 @@ func CreateMessage(w http.ResponseWriter, r *http.Request) {
 	result := DB.Create(&message)
 	if result.Error != nil {
 		log.Println(result.Error)
+		fmt.Fprintf(w, "error to add in DB")
+		return
 	}
 	json.NewEncoder(w).Encode(m)
 }
