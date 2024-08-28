@@ -1,32 +1,34 @@
 package main
 
 import (
-	"net/http"
+	"log"
 
-	"github.com/go-chi/chi"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/ssssunat/rest-api1/internal/database"
 	"github.com/ssssunat/rest-api1/internal/handlers"
 	messageservice "github.com/ssssunat/rest-api1/internal/messageService"
+	messages "github.com/ssssunat/rest-api1/internal/web/messages"
 )
-
-
-
 
 func main() {
 	database.InitDB()
-	database.DB.AutoMigrate(&messageservice.Message{})
-
+	if err := database.DB.AutoMigrate(&messageservice.Message{}); err != nil {
+		log.Fatalf("Failed AutoMigrate DB: %v", err)
+	}
 	repo := messageservice.NewMessageRepository(database.DB)
 	service := messageservice.NewService(repo)
 
 	handler := handlers.NewHandler(service)
+	e := echo.New()
 
-	router := chi.NewRouter()
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
 
-	router.Get("/api/get", handler.GetMessagesHandler)
-	router.Patch("/api/update/{id}", handler.UpdateMessageHandler)
-	router.Delete("/api/delete/{id}", handler.DeleteMessageHandler)
-	router.Post("/api/post", handler.PostMessageHandler)
+	strictHandler := messages.NewStrictHandler(handler, nil)
+	messages.RegisterHandlers(e, strictHandler)
 
-	http.ListenAndServe(":8080", router)
+	if err := e.Start(":8080"); err != nil {
+		log.Fatalf("Failed to start with err: %v", err)
+	}
 }
